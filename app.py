@@ -4,10 +4,6 @@ import pandas as pd
 import numpy as np
 import os
 
-# ─────────────────────────────────────────────────────────────────────────────
-# CRÍTICO: set_page_config DEBE ser la primera llamada a Streamlit.
-# En la versión original estaba en la línea 84 → crash garantizado.
-# ─────────────────────────────────────────────────────────────────────────────
 st.set_page_config(
     page_title="Predicción ICFES Saber 11",
     page_icon="🎓",
@@ -15,17 +11,49 @@ st.set_page_config(
     initial_sidebar_state="collapsed",
 )
 
-# ── Estilos ──────────────────────────────────────────────────────────────────
 st.markdown("""
 <style>
 @import url('https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;600&family=IBM+Plex+Sans:wght@300;400;600&display=swap');
 
 html, body, [class*="css"] { font-family: 'IBM Plex Sans', sans-serif; }
-.block-container { padding: 2rem 3rem; max-width: 1100px; }
+.block-container { padding: 0 !important; max-width: 100% !important; }
 
 h1  { font-family:'IBM Plex Mono',monospace; font-size:1.85rem;
       color:#0f2c5e; letter-spacing:-1px; margin-bottom:0; }
 h3  { font-family:'IBM Plex Mono',monospace; color:#0f2c5e; }
+
+.hero-banner {
+    background: linear-gradient(135deg, #0a1f44 0%, #1a56db 60%, #0a1f44 100%);
+    padding: 2.5rem 3rem 2rem 3rem;
+    margin-bottom: 0;
+}
+.hero-title {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 2rem;
+    font-weight: 600;
+    color: white;
+    letter-spacing: -1px;
+    margin-bottom: 0.3rem;
+}
+.hero-sub {
+    font-size: 0.95rem;
+    color: rgba(255,255,255,0.75);
+    margin-bottom: 0;
+}
+.hero-badge {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 20px;
+    padding: 0.25rem 0.9rem;
+    font-size: 0.75rem;
+    color: white;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 1px;
+    margin-top: 0.8rem;
+}
+
+.content-area { padding: 1.5rem 3rem; }
 
 .subtitle   { color:#5a6a8a; font-size:0.92rem; margin:0.2rem 0 1.5rem; }
 .warn-box   { background:#fff8e1; border-left:4px solid #f59e0b; border-radius:4px;
@@ -49,9 +77,37 @@ h3  { font-family:'IBM Plex Mono',monospace; color:#0f2c5e; }
                    font-size:0.85rem; font-weight:600; letter-spacing:0.5px; width:100%; }
 .stButton>button:hover { background:#1a56db; }
 
-.footer { margin-top:3rem; padding-top:1rem; border-top:1px solid #e2e8f0;
-          font-size:0.76rem; color:#94a3b8; text-align:center;
-          font-family:'IBM Plex Mono',monospace; }
+.footer-band {
+    background: linear-gradient(135deg, #0a1f44 0%, #1a56db 100%);
+    padding: 2rem 3rem;
+    margin-top: 3rem;
+    text-align: center;
+}
+.footer-names {
+    font-family: 'IBM Plex Mono', monospace;
+    font-size: 1rem;
+    font-weight: 600;
+    color: white;
+    letter-spacing: 0.5px;
+    margin-bottom: 0.5rem;
+}
+.footer-inst {
+    font-size: 0.82rem;
+    color: rgba(255,255,255,0.72);
+    font-family: 'IBM Plex Sans', sans-serif;
+}
+.footer-tag {
+    display: inline-block;
+    background: rgba(255,255,255,0.15);
+    border: 1px solid rgba(255,255,255,0.3);
+    border-radius: 20px;
+    padding: 0.2rem 0.8rem;
+    font-size: 0.72rem;
+    color: white;
+    font-family: 'IBM Plex Mono', monospace;
+    letter-spacing: 1px;
+    margin-top: 0.6rem;
+}
 </style>
 """, unsafe_allow_html=True)
 
@@ -61,24 +117,18 @@ h3  { font-family:'IBM Plex Mono',monospace; color:#0f2c5e; }
 # ─────────────────────────────────────────────────────────────────────────────
 @st.cache_resource
 def load_artefacts():
-    """
-    Carga pipeline_artefacts.joblib y los 6 modelos individuales.
-    @st.cache_resource garantiza que se ejecuta una sola vez.
-    """
     path = "pipeline_artefacts.joblib"
     if not os.path.exists(path):
         st.error(f"No se encontró '{path}'. Coloca todos los .joblib en la misma carpeta que app.py.")
         st.stop()
 
     arts       = joblib.load(path)
-    scaler     = arts["scaler"]            # MinMaxScaler fitted
-    encoders   = arts["encoders"]          # {col: OrdinalEncoder | LabelEncoder}
-    indep_vars = arts["independent_vars"]  # lista ordenada igual que al entrenar
-    score_cols = arts["score_cols"]        # 6 PUNT_*
-    asset_cols = arts["asset_cols"]        # FAMI_TIENE*
+    scaler     = arts["scaler"]
+    encoders   = arts["encoders"]
+    indep_vars = arts["independent_vars"]
+    score_cols = arts["score_cols"]
+    asset_cols = arts["asset_cols"]
 
-    # Cargar modelos individuales.
-    # Cada .joblib contiene: modelo_fit, vars_sig, metricas, model_name
     loaded_models = {}
     for target in score_cols:
         fname = f"icfes_mejor_{target.lower()}.joblib"
@@ -88,7 +138,7 @@ def load_artefacts():
         md = joblib.load(fname)
         loaded_models[target] = {
             "modelo" : md["modelo_fit"],
-            "vars"   : md["vars_sig"],   # subconjunto reducido por significancia estadística
+            "vars"   : md["vars_sig"],
             "nombre" : md.get("model_name", target),
             "r2"     : md.get("metricas", {}).get("r2_test"),
         }
@@ -99,47 +149,33 @@ def load_artefacts():
 scaler, encoders, indep_vars, score_cols, asset_cols, loaded_models = load_artefacts()
 
 
-# ── Helper: clases de cualquier tipo de encoder ───────────────────────────────
 def get_clases(enc):
-    """Devuelve lista de categorías para OrdinalEncoder o LabelEncoder."""
     if enc is None:
         return []
-    if hasattr(enc, "categories_"):   # OrdinalEncoder
+    if hasattr(enc, "categories_"):
         return list(enc.categories_[0])
-    if hasattr(enc, "classes_"):      # LabelEncoder
+    if hasattr(enc, "classes_"):
         return list(enc.classes_)
     return []
 
 
 # ─────────────────────────────────────────────────────────────────────────────
 # 2. PREPROCESAMIENTO
-#
-# Replica EXACTA del pipeline de entrenamiento en el mismo orden:
-#   §7.1  → INDICE_BIENES
-#   §8.2  → OrdinalEncoding  (FAMI_EDUCACION*, FAMI_ESTRATOVIVIENDA)
-#   §8.3  → LabelEncoding    (ESTU_GENERO, COLE_*, COLE_BILINGUE...)
-#   §8.5  → Interacciones económicas + log transforms  ← VARIABLES NUEVAS
-#   §7.4  → Variables contextuales (imputadas en producción)
-#   §9    → MinMaxScaler
 # ─────────────────────────────────────────────────────────────────────────────
 def preprocess_input(raw: dict) -> pd.DataFrame:
     df = pd.DataFrame([raw])
 
-    # ── §7.1  INDICE_BIENES ──────────────────────────────────────────────────
+    # INDICE_BIENES
     bin_cols = []
     for col in asset_cols:
         if col in df.columns:
             df[f"{col}_BIN"] = df[col].map({"SI": 1, "NO": 0}).fillna(0).astype(int)
             bin_cols.append(f"{col}_BIN")
     df["INDICE_BIENES"] = df[bin_cols].sum(axis=1).astype(float)
-    # Eliminar columnas de bienes originales (no van al modelo)
     df.drop(columns=[c for c in asset_cols if c in df.columns], inplace=True, errors="ignore")
     df.drop(columns=bin_cols, inplace=True, errors="ignore")
 
-    # ── §8.2 + §8.3  ENCODING ───────────────────────────────────────────────
-    # CRÍTICO: OrdinalEncoder.transform() espera shape (n, 1)  → df[[col]]
-    #          LabelEncoder.transform()  espera shape (n,)     → df[col]
-    # La versión original usaba df[[col]] para ambos → ValueError en LabelEncoder
+    # Encoding
     for col, enc in encoders.items():
         if col not in df.columns:
             continue
@@ -153,12 +189,9 @@ def preprocess_input(raw: dict) -> pd.DataFrame:
                 mapping = {cls: i for i, cls in enumerate(get_clases(enc))}
                 df[col] = df[col].map(mapping).fillna(-1).astype(int)
         except Exception:
-            df[col] = -1   # categoría no vista en entrenamiento → valor neutro
+            df[col] = -1
 
-    # ── §8.5  INTERACCIONES ECONÓMICAS + LOG TRANSFORMS ─────────────────────
-    # La versión original NO calculaba estas variables.
-    # Si faltan, el scaler recibe NaN en esas posiciones y las predicciones
-    # quedan desplazadas respecto al entrenamiento.
+    # Feature Engineering
     def fe(nombre, fn):
         try:
             val = fn(df).replace([np.inf, -np.inf], np.nan)
@@ -168,60 +201,52 @@ def preprocess_input(raw: dict) -> pd.DataFrame:
 
     fe("ESTRATO_X_EDU_MADRE",
        lambda d: d["FAMI_ESTRATOVIVIENDA"] * d["FAMI_EDUCACIONMADRE"])
-
     fe("ESTRATO_X_EDU_PADRE",
        lambda d: d["FAMI_ESTRATOVIVIENDA"] * d["FAMI_EDUCACIONPADRE"])
-
     fe("DENSIDAD_HOGAR",
        lambda d: d["FAMI_PERSONASHOGAR"] / (d["FAMI_CUARTOSHOGAR"] + 1))
-
     fe("INTERNET_X_EDU_MADRE",
        lambda d: d["FAMI_TIENEINTERNET"] * d["FAMI_EDUCACIONMADRE"]
                  if "FAMI_TIENEINTERNET" in d.columns
                  else d["FAMI_EDUCACIONMADRE"] * 0)
-
     fe("LOG_PERSONAS",
        lambda d: np.log1p(d["FAMI_PERSONASHOGAR"].clip(lower=0)))
-
     fe("LOG_CUARTOS",
        lambda d: np.log1p(d["FAMI_CUARTOSHOGAR"].clip(lower=0)))
 
-    # ── §7.4  VARIABLES CONTEXTUALES (no replicables en producción) ──────────
-    # PROM_GLOBAL_MCPIO y PROM_GLOBAL_COLEGIO se calcularon con groupby
-    # sobre el dataset completo. En producción se imputa con 0.5
-    # (valor medio dentro del rango [0,1] post-escalado).
+    # Variables contextuales no calculables en produccion
     for col in ["PROM_GLOBAL_MCPIO", "PROM_GLOBAL_COLEGIO"]:
         if col in indep_vars and col not in df.columns:
             df[col] = 0.5
 
-    # ── Garantizar todas las columnas esperadas y tipos numéricos ────────────
+    # Garantizar columnas y tipos
     for col in indep_vars:
         if col not in df.columns:
             df[col] = np.nan
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
-    # ── §9  MinMaxScaler ─────────────────────────────────────────────────────
-   df = df[indep_vars].copy()   # orden idéntico al del entrenamiento
+    # Ordenar y escalar
+    df = df[indep_vars].copy()
+    df = df.fillna(df.median())   # KNN no acepta NaN
+    df = df.fillna(0)             # fallback si mediana es NaN
 
-# KNN y otros modelos no toleran NaN — imputar con mediana de cada columna
-# antes de escalar (los NaN vienen de variables FE no calculables en produccion)
-df = df.fillna(df.median())          # mediana por columna
-df = df.fillna(0)                    # fallback si la mediana tambien es NaN
-
-df_scaled = pd.DataFrame(scaler.transform(df), columns=indep_vars)
-
+    df_scaled = pd.DataFrame(scaler.transform(df), columns=indep_vars)
     return df_scaled
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 3. UI — CABECERA
+# 3. HERO BANNER
 # ─────────────────────────────────────────────────────────────────────────────
-st.markdown("<h1>🎓 Predicción de Puntajes ICFES Saber 11</h1>", unsafe_allow_html=True)
-st.markdown(
-    '<p class="subtitle">Modelo de Machine Learning &nbsp;·&nbsp; '
-    'Universidad Pontificia Bolivariana &nbsp;·&nbsp; 2026</p>',
-    unsafe_allow_html=True,
-)
+st.markdown("""
+<div class="hero-banner">
+    <div class="hero-title">🎓 Predicción de Puntajes ICFES Saber 11</div>
+    <div class="hero-sub">Modelo de Machine Learning para estimación de resultados académicos</div>
+    <div class="hero-badge">UPB · MEDELLÍN · APRENDIZAJE DE MÁQUINAS · 2026</div>
+</div>
+""", unsafe_allow_html=True)
+
+st.markdown('<div class="content-area">', unsafe_allow_html=True)
+
 st.markdown(
     '<div class="warn-box">⚠️ <strong>Nota:</strong> Las predicciones son estimaciones '
     'estadísticas basadas en datos históricos. No constituyen garantía de resultados reales.</div>',
@@ -230,15 +255,13 @@ st.markdown(
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 4. FORMULARIO DE ENTRADA  (3 columnas)
+# 4. FORMULARIO
 # ─────────────────────────────────────────────────────────────────────────────
 col_est, col_cole, col_fam = st.columns(3)
 
-# ── Columna A: Estudiante ─────────────────────────────────────────────────────
 with col_est:
     st.markdown('<div class="section-card"><div class="section-title">👤 Estudiante</div>',
                 unsafe_allow_html=True)
-
     genero_opts = get_clases(encoders.get("ESTU_GENERO")) or ["F", "M"]
     genero = st.radio(
         "Género",
@@ -246,17 +269,13 @@ with col_est:
         format_func=lambda x: "Femenino" if x == "F" else "Masculino",
         horizontal=True,
     )
-    edad      = st.slider("Edad (años)", min_value=12, max_value=30, value=17)
-    anio      = st.slider("Año del examen", min_value=2014, max_value=2026, value=2024)
-    trimestre = st.radio("Trimestre", options=[1, 2, 3, 4], horizontal=True)
-
+    edad = st.slider("Edad (años)", min_value=12, max_value=30, value=17)
+    anio = st.slider("Año del examen", min_value=2014, max_value=2026, value=2024)
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ── Columna B: Colegio ────────────────────────────────────────────────────────
 with col_cole:
     st.markdown('<div class="section-card"><div class="section-title">🏫 Colegio</div>',
                 unsafe_allow_html=True)
-
     area = st.selectbox(
         "Área de ubicación",
         get_clases(encoders.get("COLE_AREA_UBICACION")) or ["URBANO", "RURAL"],
@@ -269,36 +288,29 @@ with col_cole:
         "Jornada",
         get_clases(encoders.get("COLE_JORNADA")) or ["MANANA", "TARDE", "COMPLETA"],
     )
-    # COLE_CARACTER faltaba completamente en la versión original
     caracter = st.selectbox(
         "Carácter del colegio",
         get_clases(encoders.get("COLE_CARACTER")) or ["ACADEMICO", "TECNICO", "OTRO"],
     )
     bilingue_opts = get_clases(encoders.get("COLE_BILINGUE")) or ["S", "N"]
     bilingue = st.radio("Bilingüe", options=bilingue_opts, horizontal=True)
-
     st.markdown("</div>", unsafe_allow_html=True)
 
-# ── Columna C: Familia ────────────────────────────────────────────────────────
 with col_fam:
     st.markdown('<div class="section-card"><div class="section-title">🏠 Entorno Familiar</div>',
                 unsafe_allow_html=True)
-
     estrato_opts = get_clases(encoders.get("FAMI_ESTRATOVIVIENDA")) or \
                   ["Sin Estrato","Estrato 1","Estrato 2","Estrato 3",
                    "Estrato 4","Estrato 5","Estrato 6"]
     estrato   = st.selectbox("Estrato de vivienda", options=estrato_opts)
-
     edu_opts  = get_clases(encoders.get("FAMI_EDUCACIONMADRE")) or ["Ninguno", "Postgrado"]
     edu_madre = st.selectbox("Educación de la madre", options=edu_opts)
     edu_padre = st.selectbox(
         "Educación del padre",
         options=get_clases(encoders.get("FAMI_EDUCACIONPADRE")) or edu_opts,
     )
-
     personas = st.slider("Personas en el hogar", min_value=1, max_value=15, value=4)
     cuartos  = st.slider("Cuartos en el hogar",  min_value=1, max_value=15, value=3)
-
     st.markdown("**Bienes del hogar**")
     ca, cb = st.columns(2)
     with ca:
@@ -307,12 +319,11 @@ with col_fam:
     with cb:
         tiene_inet = st.checkbox("Internet", value=True)
         tiene_lava = st.checkbox("Lavadora",  value=True)
-
     st.markdown("</div>", unsafe_allow_html=True)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 5. BOTÓN Y PREDICCIÓN
+# 5. PREDICCIÓN
 # ─────────────────────────────────────────────────────────────────────────────
 st.write("")
 _, btn_col, _ = st.columns([2, 3, 2])
@@ -320,12 +331,10 @@ with btn_col:
     predecir = st.button("⚡ Calcular predicciones", type="primary")
 
 if predecir:
-    # Construir dict crudo con los mismos nombres de columna que el pipeline
     user_raw = {
         "ESTU_GENERO"          : genero,
         "EDAD"                 : float(edad),
         "ANIO"                 : float(anio),
-        "TRIMESTRE"            : float(trimestre),
         "COLE_AREA_UBICACION"  : area,
         "COLE_CALENDARIO"      : calendario,
         "COLE_JORNADA"         : jornada,
@@ -340,8 +349,6 @@ if predecir:
         "FAMI_TIENECOMPUTADOR" : "SI" if tiene_comp else "NO",
         "FAMI_TIENEINTERNET"   : "SI" if tiene_inet else "NO",
         "FAMI_TIENELAVADORA"   : "SI" if tiene_lava else "NO",
-        # COLE_MCPIO_UBICACION no disponible en producción
-        # → imputado como promedio global en preprocess_input()
     }
 
     with st.spinner("Calculando predicciones…"):
@@ -368,16 +375,14 @@ if predecir:
 
     for i, (target, info) in enumerate(loaded_models.items()):
         modelo   = info["modelo"]
-        vars_sig = info["vars"]   # columnas con las que se entrenó el modelo
+        vars_sig = info["vars"]
 
-        # CRÍTICO: cada modelo fue entrenado con un subconjunto vars_sig,
-        # no con todo indep_vars. Pasarle columnas extra → shape mismatch.
-        cols_ok = [v for v in vars_sig if v in X_scaled.columns]
+        cols_ok  = [v for v in vars_sig if v in X_scaled.columns]
         X_target = X_scaled[cols_ok]
 
         try:
             pred = float(modelo.predict(X_target)[0])
-            pred = max(0.0, pred)   # puntajes no pueden ser negativos
+            pred = max(0.0, pred)
         except Exception as e:
             pred = np.nan
             st.warning(f"Error prediciendo {target}: {e}")
@@ -409,14 +414,19 @@ if predecir:
         use_container_width=True,
     )
 
+st.markdown("</div>", unsafe_allow_html=True)
 
 # ─────────────────────────────────────────────────────────────────────────────
-# 6. FOOTER
+# 6. FOOTER AZUL
 # ─────────────────────────────────────────────────────────────────────────────
 st.markdown("""
-<div class="footer">
-    Sebastián Muñoz &nbsp;·&nbsp; Iván Velasco &nbsp;·&nbsp; Sebastián Velasco
-    &nbsp;&nbsp;|&nbsp;&nbsp;
-    Aprendizaje de Máquinas &nbsp;·&nbsp; Universidad Pontificia Bolivariana &nbsp;·&nbsp; 2026
+<div class="footer-band">
+    <div class="footer-names">
+        Sebastián Muñoz &nbsp;·&nbsp; Sebastián Velasco &nbsp;·&nbsp; Iván Velasco
+    </div>
+    <div class="footer-inst">
+        Universidad Pontificia Bolivariana &nbsp;·&nbsp; Medellín, Colombia
+    </div>
+    <div class="footer-tag">UPB · APRENDIZAJE DE MÁQUINAS · 2026</div>
 </div>
 """, unsafe_allow_html=True)
