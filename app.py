@@ -201,8 +201,14 @@ def preprocess_input(raw: dict) -> pd.DataFrame:
         df[col] = pd.to_numeric(df[col], errors="coerce")
 
     # ── §9  MinMaxScaler ─────────────────────────────────────────────────────
-    df = df[indep_vars].copy()   # orden idéntico al del entrenamiento
-    df_scaled = pd.DataFrame(scaler.transform(df), columns=indep_vars)
+   df = df[indep_vars].copy()   # orden idéntico al del entrenamiento
+
+# KNN y otros modelos no toleran NaN — imputar con mediana de cada columna
+# antes de escalar (los NaN vienen de variables FE no calculables en produccion)
+df = df.fillna(df.median())          # mediana por columna
+df = df.fillna(0)                    # fallback si la mediana tambien es NaN
+
+df_scaled = pd.DataFrame(scaler.transform(df), columns=indep_vars)
 
     return df_scaled
 
